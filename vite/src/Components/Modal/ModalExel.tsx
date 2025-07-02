@@ -21,121 +21,159 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ImportResultsDisplay from '../ImportResultsDisplay';
 
-// Definir el API base URL
+// Base URL for API endpoints - centralized configuration for easy environment changes
 const API_BASE_URL = 'http://localhost:8000';
 
-// Interfaz para los resultados del procesamiento
+// Interface defining the structure of processing results from the server
+// This represents the response after uploading and processing an Excel file
 interface ProcessingResults {
-  success: boolean;
-  msg?: string;
-  message?: string;
-  insertados?: number;
-  totalProcesados?: number;
-  errores?: Array<{
-    estudiante: string;
-    error: string;
+  success: boolean;           // Overall operation success status
+  msg?: string;              // Error message (alternative naming)
+  message?: string;          // Success/info message (alternative naming)
+  insertados?: number;       // Number of records successfully inserted
+  totalProcesados?: number;  // Total number of records processed
+  errores?: Array<{          // Array of specific processing errors
+    estudiante: string;      // Student identifier that failed
+    error: string;           // Description of the specific error
   }>;
 }
 
-// Interfaz para las propiedades del modal
+// Interface defining the props for the Excel import modal component
 interface ModalImportarExcelProps {
-  open: boolean;
-  onClose: () => void;
-  onImportComplete: () => void;
+  open: boolean;                    // Controls modal visibility
+  onClose: () => void;             // Callback when modal is closed
+  onImportComplete: () => void;    // Callback when import process is successfully completed
 }
 
+// Main component for handling Excel file import with progress tracking and error handling
 const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
   open,
   onClose,
   onImportComplete
 }) => {
-  // Estados
+  // State management for upload progress tracking (0-100 percentage)
   const [uploadProgress, setUploadProgress] = React.useState(0);
+  
+  // State to store the currently selected file for upload
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  
+  // State to track whether an upload operation is currently in progress
   const [uploading, setUploading] = React.useState(false);
+  
+  // State for storing and displaying error messages to the user
   const [error, setError] = React.useState<string | null>(null);
+  
+  // State to store the results after processing the uploaded file
   const [processingResults, setProcessingResults] = React.useState<ProcessingResults | null>(null);
+  
+  // Reference to the hidden file input element for programmatic file selection
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Resetear el modal cuando se abre
+  /**
+   * Effect hook to reset modal state when it opens
+   * Ensures clean state for each new import operation
+   */
   React.useEffect(() => {
     if (open) {
-      setSelectedFile(null);
-      setError(null);
-      setUploadProgress(0);
-      setProcessingResults(null);
+      setSelectedFile(null);        // Clear any previously selected file
+      setError(null);               // Clear any previous error messages
+      setUploadProgress(0);         // Reset progress to zero
+      setProcessingResults(null);   // Clear any previous processing results
     }
   }, [open]);
 
-  // Manejar la selección de archivos
+  /**
+   * Handles file selection from the file input element
+   * Validates file type and size before accepting the selection
+   * @param event - Change event from the file input
+   */
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    setError(null);
-    setProcessingResults(null);
+    setError(null);                 // Clear any previous errors
+    setProcessingResults(null);     // Clear previous results
 
     if (files && files.length > 0) {
       const file = files[0];
 
+      // Log file information for debugging purposes
       console.log("Archivo seleccionado - Nombre:", file.name);
       console.log("Archivo seleccionado - Tipo:", file.type);
       console.log("Archivo seleccionado - Tamaño:", file.size);
       
-      // Validar que sea un archivo Excel
+      // Validate file extension - only Excel files are allowed
       if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
         setError('Solo se permiten archivos Excel (.xlsx, .xls)');
         return;
       }
 
-      // Validar tamaño (máximo 5MB)
+      // Validate file size - maximum 5MB to prevent server overload
       if (file.size > 5 * 1024 * 1024) {
         setError('El archivo es demasiado grande. El tamaño máximo permitido es 5MB');
         return;
       }
 
+      // File passes validation - store it in state
       setSelectedFile(file);
     }
   };
 
-  // Manejar clic en el botón de seleccionar archivo
+  /**
+   * Programmatically triggers the file input dialog
+   * Called when user clicks on the drop zone area
+   */
   const handleSelectFileClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
 
-  // Cancelar la selección de archivo
+  /**
+   * Cancels the current file selection and resets related state
+   * Allows user to start over with file selection
+   */
   const handleCancelSelection = () => {
-    setSelectedFile(null);
-    setProcessingResults(null);
+    setSelectedFile(null);          // Remove selected file
+    setProcessingResults(null);     // Clear any results
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = ''; // Reset file input value
     }
   };
 
-  // Subir archivo Excel con monitoreo de progreso
+  /**
+   * Handles the Excel file upload process with real-time progress tracking
+   * Uses XMLHttpRequest for progress monitoring and FormData for file upload
+   * Manages all aspects of the upload lifecycle including error handling
+   */
   const handleUploadExcel = async () => {
+    // Validate that a file has been selected before proceeding
     if (!selectedFile) {
       setError('Por favor, seleccione un archivo primero');
       return;
     }
 
-    setUploading(true);
-    setError(null);
-    setUploadProgress(0);
-    setProcessingResults(null);
+    // Initialize upload state
+    setUploading(true);             // Set uploading flag to show progress UI
+    setError(null);                 // Clear any previous errors
+    setUploadProgress(0);           // Reset progress counter
+    setProcessingResults(null);     // Clear previous results
 
     try {
+      // Prepare form data for multipart file upload
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      // Crear un objeto XMLHttpRequest para monitorear el progreso
+      // Create XMLHttpRequest for advanced progress tracking capabilities
       const xhr = new XMLHttpRequest();
 
-      // Configurar la promesa para la respuesta
+      // Create a Promise wrapper around XMLHttpRequest for async/await syntax
       const uploadPromise = new Promise<ProcessingResults>((resolve, reject) => {
+        // Configure the HTTP request
         xhr.open('POST', `${API_BASE_URL}/estudiantes/importar-excel`);
 
-        // Evento para monitorear el progreso de la carga
+        /**
+         * Progress event handler for upload progress tracking
+         * Updates the progress bar in real-time as file uploads
+         */
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable) {
             const percentComplete = (event.loaded / event.total) * 100;
@@ -143,12 +181,18 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
           }
         };
 
-        // Eventos para manejar la respuesta
+        /**
+         * Success/Error response handler
+         * Processes the server response and handles various HTTP status codes
+         */
         xhr.onload = () => {
           console.log("Status de respuesta:", xhr.status);
           console.log("Respuesta completa:", xhr.responseText);
+          
+          // Check if request was successful (2xx status codes)
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
+              // Parse JSON response from server
               const data = JSON.parse(xhr.responseText);
               console.log("Datos parseados:", data);
               resolve(data as ProcessingResults);
@@ -157,7 +201,7 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
               reject(new Error('Error al analizar la respuesta del servidor'));
             }
           } else {
-            // Manejar diferentes códigos de error HTTP
+            // Handle different HTTP error status codes with specific messages
             switch (xhr.status) {
               case 400:
                 reject(new Error('Archivo con formato incorrecto'));
@@ -174,43 +218,60 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
           }
         };
 
+        /**
+         * Network error handler
+         * Handles cases where the request couldn't be completed due to network issues
+         */
         xhr.onerror = () => {
           reject(new Error('Error de red al intentar conectar con el servidor'));
         };
 
+        /**
+         * Timeout error handler
+         * Handles cases where the request takes too long to complete
+         */
         xhr.ontimeout = () => {
           reject(new Error('Tiempo de espera agotado. Compruebe su conexión'));
         };
 
-        // Enviar la solicitud
+        // Send the actual HTTP request with the form data
         xhr.send(formData);
       });
 
-      // Esperar la respuesta
+      // Wait for the upload to complete and get the response
       const data = await uploadPromise;
 
-      // Establecer progreso completo
+      // Set progress to 100% when upload completes
       setUploadProgress(100);
       setProcessingResults(data);
 
-      // Procesar resultado
+      // Process the server response
       if (data.success) {
+        // If successful, notify parent component after a brief delay
+        // The delay allows user to see the success message
         setTimeout(() => {
-          onImportComplete(); // Notificar que la importación se ha completado
-        }, 2000); // Darle tiempo al usuario para ver el resultado
+          onImportComplete(); // Trigger parent's import completion callback
+        }, 2000);
       } else {
+        // If processing failed, show the error message from server
         setError(`Error al procesar archivo: ${data.msg || 'Error desconocido'}`);
       }
     } catch (error) {
+      // Handle any errors that occurred during the upload process
       console.error('Error al subir archivo:', error);
       setError(`${error instanceof Error ? error.message : 'Error de conexión con el servidor'}`);
-      setUploadProgress(0);
+      setUploadProgress(0); // Reset progress on error
     } finally {
+      // Always reset uploading state when operation completes (success or failure)
       setUploading(false);
     }
   };
 
-  // Vista previa del archivo seleccionado
+  /**
+   * Component for displaying file information preview
+   * Shows file details before upload to confirm selection
+   * @param file - The selected file object
+   */
   const FilePreview = ({ file }: { file: File }) => {
     return (
       <Paper sx={{ p: 2, mt: 2, bgcolor: 'background.default' }}>
@@ -233,11 +294,12 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
   return (
     <Dialog
       open={open}
-      onClose={processingResults?.success ? onImportComplete : onClose}
+      onClose={processingResults?.success ? onImportComplete : onClose} // Smart close behavior based on success state
       maxWidth="sm"
       fullWidth
       aria-labelledby="modal-subir-excel-title"
     >
+      {/* Modal Header with title and close button */}
       <DialogTitle id="modal-subir-excel-title">
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">Subir Archivo Excel</Typography>
@@ -249,15 +311,19 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
 
       <Divider />
 
+      {/* Main modal content area */}
       <DialogContent>
+        {/* Error message display - only shown when there's an error */}
         {error && (
           <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
+        {/* File selection and upload interface - hidden when showing results */}
         {!processingResults && (
           <Box sx={{ py: 3 }}>
+            {/* Hidden file input element - triggered programmatically */}
             <input
               ref={fileInputRef}
               type="file"
@@ -266,6 +332,7 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
               style={{ display: 'none' }}
             />
 
+            {/* File drop zone and selection area */}
             <Box
               sx={{
                 p: 3,
@@ -282,7 +349,9 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
               }}
               onClick={handleSelectFileClick}
             >
+              {/* Conditional display based on whether a file is selected */}
               {selectedFile ? (
+                // Show selected file information
                 <Box>
                   <Typography variant="body1" sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <UploadFileIcon color="primary" sx={{ mr: 1 }} />
@@ -290,6 +359,7 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
                   </Typography>
                 </Box>
               ) : (
+                // Show file selection prompt
                 <Box>
                   <CloudUploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
                   <Typography variant="body1">
@@ -302,10 +372,13 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
               )}
             </Box>
 
+            {/* File preview and action buttons - only shown when file is selected */}
             {selectedFile && (
               <>
+                {/* Display file information preview */}
                 <FilePreview file={selectedFile} />
 
+                {/* Action buttons for upload and cancel */}
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 3 }}>
                   <Button
                     variant="contained"
@@ -329,6 +402,7 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
               </>
             )}
 
+            {/* Upload progress indicator - only shown during upload */}
             {uploading && (
               <Box sx={{ mt: 3, width: '100%' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -347,6 +421,7 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
           </Box>
         )}
 
+        {/* Results display component - only shown after processing completes */}
         {processingResults && (
           <ImportResultsDisplay results={processingResults} />
         )}
@@ -354,8 +429,11 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
 
       <Divider />
 
+      {/* Modal footer with action buttons */}
       <DialogActions sx={{ px: 3, py: 2 }}>
+        {/* Conditional button display based on processing state */}
         {processingResults?.success ? (
+          // Show completion button when import was successful
           <Button
             onClick={onImportComplete}
             variant="contained"
@@ -364,6 +442,7 @@ const ModalImportarExcel: React.FC<ModalImportarExcelProps> = ({
             Completar
           </Button>
         ) : (
+          // Show cancel and upload buttons during file selection/upload
           <>
             <Button
               onClick={onClose}

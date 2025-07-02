@@ -22,42 +22,49 @@ import { SelectChangeEvent } from '@mui/material/Select';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
 
-// Interfaz para el estudiante
+// Interface defining the structure of a student entity
+// Contains all the fields that can be edited in the form
 interface Estudiante {
-  id_estudiante: number;
-  nombre: string;
-  apellido: string;
-  email: string;
-  telefono: string;
-  carrera: string;
-  semestre: number;
-  promedio: number;
-  estado?: number;
-  fecha_registro?: string;
+  id_estudiante: number;        // Unique identifier for the student
+  nombre: string;               // Student's first name
+  apellido: string;             // Student's last name
+  email: string;                // Student's email address
+  telefono: string;             // Student's phone number
+  carrera: string;              // Student's major/career field
+  semestre: number;             // Current semester (1-12)
+  promedio: number | string;    // GPA/average grade (can be empty string initially)
+  estado?: number;              // Optional status field (active/inactive)
+  fecha_registro?: string;      // Optional registration date
 }
 
-// Interfaz para las propiedades del modal
+// Interface defining the props for the student editing modal component
 interface ModalEdicionEstudianteProps {
-  open: boolean;
-  onClose: () => void;
-  estudiante: Estudiante | null;
-  onGuardar: (estudiante: Estudiante) => void;
-  carreras?: Array<{
+  open: boolean;                          // Controls modal visibility
+  onClose: () => void;                   // Callback when modal is closed
+  estudiante: Estudiante | null;         // Student data to edit (null when creating new)
+  onGuardar: (estudiante: Estudiante) => void;  // Callback when saving student data
+  carreras?: Array<{                     // Optional array of available career options
     id_carrera?: number;
     nombre?: string;
   }>;
-  loading?: boolean;
+  loading?: boolean;                     // Optional loading state for save operation
 }
 
+// Main modal component for editing student information
+// Provides a comprehensive form with validation for all student fields
 const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
   open,
   onClose,
   estudiante,
   onGuardar,
-  carreras = [],
-  loading = false
+  carreras = [],      // Default empty array if no careers provided
+  loading = false     // Default to not loading
 }) => {
-  // Estado inicial del formulario
+  
+  /**
+   * Initial form state structure
+   * Defines default values for all form fields when creating a new student
+   */
   const initialForm: Estudiante = {
     id_estudiante: 0,
     nombre: '',
@@ -70,34 +77,58 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
     estado: 1
   };
 
-  // Estado para manejar los datos del formulario
+  // State to manage the form data throughout the editing process
   const [formData, setFormData] = React.useState<Estudiante>(initialForm);
-  
-  // Estado para manejar errores de validación
+
+  // State to manage validation errors for each form field
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
-  // Actualizar el formulario cuando se recibe un estudiante
+  /**
+   * Effect hook to populate form when modal opens with student data
+   * Handles the case where promedio might be null and converts it to empty string
+   * Also clears any previous validation errors
+   */
   React.useEffect(() => {
     if (open && estudiante) {
       setFormData({
-        ...estudiante
+        ...estudiante,
+        // Handle null promedio by converting to empty string for display
+        promedio: estudiante.promedio === null ? '' : estudiante.promedio
       });
-      setErrors({});
+      setErrors({}); // Clear any previous validation errors
     }
   }, [open, estudiante]);
 
-  // Manejar cambios en los campos del formulario
+  /**
+   * Handles form field changes for both regular inputs and select dropdowns
+   * Processes different field types appropriately (numbers, strings, etc.)
+   * @param e - Change event from input or select element
+   */
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }> | SelectChangeEvent<string>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<string>
   ) => {
     const { name, value } = e.target;
+    
     if (name) {
+      let processedValue: any = value;
+
+      // Special processing for numeric fields
+      if (name === 'semestre') {
+        // Convert semester to integer, default to 1 if invalid
+        processedValue = parseInt(value as string, 10) || 1;
+      } else if (name === 'promedio') {
+        // Allow empty string for promedio, otherwise convert to float
+        // This enables users to clear the field and enter new values
+        processedValue = value === '' ? '' : parseFloat(value as string);
+      }
+
+      // Update form data with processed value
       setFormData({
         ...formData,
-        [name]: value
+        [name]: processedValue
       });
-      
-      // Limpiar error cuando el usuario cambia el valor
+
+      // Clear any existing error for this field when user starts typing
       if (errors[name]) {
         setErrors({
           ...errors,
@@ -107,53 +138,64 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
     }
   };
 
-  // Validar el formulario antes de guardar
+  /**
+   * Comprehensive form validation function
+   * Validates all required fields and applies business rules
+   * @returns boolean indicating whether the form is valid
+   */
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
-    // Validar nombre
+
+    // Validate nombre (first name) - required field
     if (!formData.nombre.trim()) {
       newErrors.nombre = 'El nombre es obligatorio';
     }
-    
-    // Validar apellido
+
+    // Validate apellido (last name) - required field
     if (!formData.apellido.trim()) {
       newErrors.apellido = 'El apellido es obligatorio';
     }
-    
-    // Validar email
+
+    // Validate email - required field with format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!formData.email.trim()) {
       newErrors.email = 'El email es obligatorio';
     } else if (!emailRegex.test(formData.email)) {
       newErrors.email = 'El email no es válido';
     }
-    
-    // Validar teléfono
+
+    // Validate telefono (phone) - required field
     if (!formData.telefono.trim()) {
       newErrors.telefono = 'El teléfono es obligatorio';
     }
-    
-    // Validar carrera
-    if (!formData.carrera) {
+
+    // Validate carrera (career/major) - required field
+    if (!formData.carrera || formData.carrera.trim() === '') {
       newErrors.carrera = 'La carrera es obligatoria';
     }
-    
-    // Validar semestre
+
+    // Validate semestre (semester) - must be between 1 and 12
     if (formData.semestre < 1 || formData.semestre > 12) {
       newErrors.semestre = 'El semestre debe estar entre 1 y 12';
     }
-    
-    // Validar promedio
-    if (formData.promedio < 0 || formData.promedio > 10) {
-      newErrors.promedio = 'El promedio debe estar entre 0 y 10';
+
+    // Validate promedio (GPA) - optional but if provided must be 0-10
+    if (formData.promedio !== '' && formData.promedio !== null) {
+      const promedioNum = typeof formData.promedio === 'string' ? parseFloat(formData.promedio) : formData.promedio;
+      if (isNaN(promedioNum) || promedioNum < 0 || promedioNum > 10) {
+        newErrors.promedio = 'El promedio debe estar entre 0 y 10';
+      }
     }
-    
+
+    // Update errors state and return validation result
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Manejar el envío del formulario
+  /**
+   * Handles form submission
+   * Validates the form first, then calls the save callback if valid
+   */
   const handleSubmit = () => {
     if (validateForm()) {
       onGuardar(formData);
@@ -161,13 +203,14 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
   };
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={onClose}
       maxWidth="md"
       fullWidth
       aria-labelledby="modal-edicion-estudiante-title"
     >
+      {/* Modal Header with title and close button */}
       <DialogTitle id="modal-edicion-estudiante-title">
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">Editar Estudiante</Typography>
@@ -176,24 +219,27 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
           </IconButton>
         </Box>
       </DialogTitle>
-      
+
       <Divider />
-      
+
+      {/* Main form content area */}
       <DialogContent>
+        {/* Instructions for the user */}
         <Box my={2}>
           <Typography variant="body2" color="textSecondary" gutterBottom>
             Modifique los datos del estudiante según sea necesario.
           </Typography>
         </Box>
-        
+
         <Grid container spacing={3}>
-          {/* Información Personal */}
+          {/* Personal Information Section Header */}
           <Grid item xs={12}>
             <Typography variant="subtitle1" fontWeight="medium">
               Información Personal
             </Typography>
           </Grid>
-          
+
+          {/* First Name Input Field */}
           <Grid item xs={12} md={6}>
             <TextField
               name="nombre"
@@ -202,12 +248,13 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
               variant="outlined"
               value={formData.nombre}
               onChange={handleChange}
-              error={!!errors.nombre}
-              helperText={errors.nombre}
+              error={!!errors.nombre}        // Show error state if validation failed
+              helperText={errors.nombre}     // Display error message
               required
             />
           </Grid>
-          
+
+          {/* Last Name Input Field */}
           <Grid item xs={12} md={6}>
             <TextField
               name="apellido"
@@ -221,7 +268,8 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
               required
             />
           </Grid>
-          
+
+          {/* Email Input Field with email type for better mobile keyboards */}
           <Grid item xs={12} md={6}>
             <TextField
               name="email"
@@ -236,7 +284,8 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
               required
             />
           </Grid>
-          
+
+          {/* Phone Number Input Field */}
           <Grid item xs={12} md={6}>
             <TextField
               name="telefono"
@@ -250,14 +299,15 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
               required
             />
           </Grid>
-          
-          {/* Información Académica */}
+
+          {/* Academic Information Section Header */}
           <Grid item xs={12} sx={{ mt: 2 }}>
             <Typography variant="subtitle1" fontWeight="medium">
               Información Académica
             </Typography>
           </Grid>
-          
+
+          {/* Career/Major Selection Dropdown */}
           <Grid item xs={12} md={12}>
             <FormControl fullWidth error={!!errors.carrera} required>
               <InputLabel id="carrera-label">Carrera</InputLabel>
@@ -268,18 +318,21 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
                 onChange={handleChange}
                 label="Carrera"
               >
+                {/* Dynamic career options from props or fallback to hardcoded list */}
                 {carreras.length > 0 ? (
+                  // Use provided careers array if available
                   carreras.map((carrera) => (
-                    <MenuItem 
-                      key={carrera.id_carrera || carrera.nombre} 
+                    <MenuItem
+                      key={carrera.id_carrera || carrera.nombre}
                       value={carrera.nombre}
                     >
                       {carrera.nombre}
                     </MenuItem>
                   ))
                 ) : (
+                  // Fallback to hardcoded career options if no careers provided
                   [
-                    "Ingeniería Informática",
+                    "Ingeniería en Sistemas Computacionales",
                     "Ingeniería Civil",
                     "Medicina",
                     "Derecho",
@@ -293,10 +346,14 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
                   ))
                 )}
               </Select>
-              {errors.carrera && <FormHelperText>{errors.carrera}</FormHelperText>}
+              {/* Display error message for career field if validation failed */}
+              {errors.carrera && (
+                <FormHelperText>{errors.carrera}</FormHelperText>
+              )}
             </FormControl>
           </Grid>
-          
+
+          {/* Semester Input Field - numeric with constraints */}
           <Grid item xs={12} md={6}>
             <TextField
               name="semestre"
@@ -308,11 +365,12 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
               onChange={handleChange}
               error={!!errors.semestre}
               helperText={errors.semestre}
-              InputProps={{ inputProps: { min: 1, max: 12 } }}
+              InputProps={{ inputProps: { min: 1, max: 12 } }} // HTML5 validation constraints
               required
             />
           </Grid>
-          
+
+          {/* GPA/Average Input Field - allows decimal values */}
           <Grid item xs={12} md={6}>
             <TextField
               name="promedio"
@@ -320,33 +378,38 @@ const ModalEdicionEstudiante: React.FC<ModalEdicionEstudianteProps> = ({
               type="number"
               fullWidth
               variant="outlined"
-              value={formData.promedio}
+              // Handle null values by converting to empty string for display
+              value={formData.promedio === null ? '' : formData.promedio}  
               onChange={handleChange}
               error={!!errors.promedio}
               helperText={errors.promedio}
-              InputProps={{ inputProps: { min: 0, max: 10, step: 0.1 } }}
+              InputProps={{ inputProps: { min: 0, max: 10, step: 0.1 } }} // Allow decimals
               required
             />
           </Grid>
         </Grid>
       </DialogContent>
-      
+
       <Divider />
-      
+
+      {/* Modal footer with action buttons */}
       <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button 
-          onClick={onClose} 
+        {/* Cancel Button - closes modal without saving */}
+        <Button
+          onClick={onClose}
           color="inherit"
-          disabled={loading}
+          disabled={loading}  // Disable during save operation
         >
           Cancelar
         </Button>
-        <Button 
-          onClick={handleSubmit} 
-          variant="contained" 
+        
+        {/* Save Button - validates and saves the form data */}
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
           color="primary"
           startIcon={loading ? <CircularProgress size={20} /> : <SaveIcon />}
-          disabled={loading}
+          disabled={loading}  // Disable during save operation to prevent double-submission
         >
           {loading ? 'Guardando...' : 'Guardar Cambios'}
         </Button>
